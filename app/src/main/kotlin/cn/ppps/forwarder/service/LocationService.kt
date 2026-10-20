@@ -45,6 +45,9 @@ class LocationService : Service() {
     private var receiverRegistered = false
     private val handler = Handler(Looper.getMainLooper())
 
+    /** 单次定位序号：每次请求 +1，用于作废上一轮遗留的定时回退 */
+    private var oneShotToken = 0
+
     private val locationStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == LocationManager.PROVIDERS_CHANGED_ACTION) {
@@ -55,6 +58,12 @@ class LocationService : Service() {
 
     companion object {
         var isRunning = false
+
+        /** GPS 优先时，等 GPS 出结果的最长时间；超时则回退网络定位 */
+        private const val GPS_FIRST_TIMEOUT_MS = 12_000L
+
+        /** 单次定位总超时兜底，覆盖「GPS + 网络」两段 */
+        private const val ONE_SHOT_TOTAL_TIMEOUT_MS = 25_000L
 
         /**
          * 按需定位：唤醒服务做一次单次定位，拿到结果后自动停止。
@@ -240,8 +249,12 @@ class LocationService : Service() {
     }
 
     /**
-     * 做一次单次定位。拿到结果后库会自动 stopLocation() 停止定位，
-     * 这里再加一个超时兜底，避免一直挂着。
+     * 做一次单次定位。
+     *
+     * 精确精度 + 非省电设置时按「GPS 优先，超时回退网络」策略：
+     *   1. 先用 GPS 取点，最多等 [GPS_FIRST_TIMEOUT_MS]
+     *   2. 拿不到再换 NETWORK_PROVIDER 继续等
+     *   3. 总时长超过 [ONE_SHOT_TOTAL_TIMEOUT_MS] 强制收手，避免 GPS 一直挂着耗电
      */
     private fun oneShotFix() {
         try {
@@ -254,20 +267,46 @@ class LocationService : Service() {
                 return
             }
 
-            if (App.LocationClient.isStarted()) {
-                App.LocationClient.stopLocation()
-            }
-            App.LocationClient.setLocationOption(buildLocationOption(true))
-            App.LocationClient.startLocation()
-            Log.i(TAG, "oneShotFix: 已发起单次定位")
+            oneShotToken++
+            val token = oneShotToken
+            val baselineTime = HttpServerUtils.apiLocationCache.time
 
-            //超时兜底：30 秒还没拿到就收手
+            fun hasNewFix(): Boolean = HttpServerUtils.apiLocationCache.time != baselineTime
+
+            fun attempt(provider: String?) {
+                if (token != oneShotToken) return
+                try {
+                    if (App.LocationClient.isStarted()) {
+                        App.LocationClient.stopLocation()
+                    }
+                    App.LocationClient.setLocationOption(buildLocationOption(true, provider))
+                    App.LocationClient.startLocation()
+                    Log.i(TAG, "oneShotFix: 发起定位 provider=${provider ?: "系统默认"}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "oneShotFix: provider=$provider 失败 ${e.message}")
+                }
+            }
+
+            val primary = LocationProviderPicker.primary(App.context)
+            attempt(primary)
+
+            //GPS 优先：超时没结果就回退网络定位
+            if (primary == LocationManager.GPS_PROVIDER) {
+                handler.postDelayed({
+                    if (token != oneShotToken || hasNewFix()) return@postDelayed
+                    Log.w(TAG, "oneShotFix: GPS 未出结果，回退网络定位")
+                    attempt(LocationProviderPicker.fallback(App.context))
+                }, GPS_FIRST_TIMEOUT_MS)
+            }
+
+            //总超时兜底
             handler.postDelayed({
-                if (SettingUtils.locationOnDemand && App.LocationClient.isStarted()) {
-                    Log.w(TAG, "oneShotFix: 超时，停止定位")
+                if (token != oneShotToken) return@postDelayed
+                if (App.LocationClient.isStarted()) {
+                    Log.w(TAG, "oneShotFix: 总超时，停止定位")
                     App.LocationClient.stopLocation()
                 }
-            }, 30_000L)
+            }, ONE_SHOT_TOTAL_TIMEOUT_MS)
         } catch (e: Exception) {
             e.printStackTrace()
             Log.e(TAG, "oneShotFix: ${e.message}")
@@ -290,8 +329,12 @@ class LocationService : Service() {
     /**
      * 组装定位参数。
      * [once] = true 表示单次定位（按需模式），拿到结果自动停。
+     * [providerOverride] 显式指定 provider；null 表示不指定，交回系统。
      */
-    private fun buildLocationOption(once: Boolean) = App.LocationClient.getLocationOption()
+    private fun buildLocationOption(
+        once: Boolean,
+        providerOverride: String? = LocationProviderPicker.primary(App.context)
+    ) = App.LocationClient.getLocationOption()
         .setAccuracy(SettingUtils.locationAccuracy)//设置位置精度
         .setPowerRequirement(SettingUtils.locationPowerRequirement) //设置电量消耗
         .setMinTime(if (once) 0L else SettingUtils.locationMinInterval)//设置位置更新最小时间间隔
@@ -300,7 +343,7 @@ class LocationService : Service() {
         .setLastKnownLocation(false)//设置是否获取最后一次缓存的已知位置
         .apply {
             //关键：按精度/电耗显式指定 provider，绕开 getBestProvider 恒返回 fused 的问题
-            LocationProviderPicker.pick(App.context)?.let { setProvider(it) }
+            providerOverride?.let { setProvider(it) }
         }
 
     private fun enqueueLocationWorkerRequest(
@@ -333,3 +376,4 @@ class LocationService : Service() {
     }
 
 }
+
