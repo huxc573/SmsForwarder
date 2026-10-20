@@ -150,6 +150,7 @@ class SettingsFragment : BaseFragment<FragmentSettingsBinding?>(), View.OnClickL
         switchEnableBluetooth(binding!!.sbEnableBluetooth, binding!!.layoutBluetoothSetting, binding!!.xsbScanInterval, binding!!.scbIgnoreAnonymous)
         //GPS定位功能
         switchEnableLocation(binding!!.sbEnableLocation, binding!!.layoutLocationSetting, binding!!.rgAccuracy, binding!!.rgPowerRequirement, binding!!.xsbMinInterval, binding!!.xsbMinDistance)
+        switchLocationOnDemand(binding!!.sbLocationOnDemand)
         //短信指令
         switchEnableSmsCommand(binding!!.sbEnableSmsCommand, binding!!.etSafePhone)
         //靠近听筒关屏
@@ -700,6 +701,18 @@ class SettingsFragment : BaseFragment<FragmentSettingsBinding?>(), View.OnClickL
                 restartLocationService()
             }
         }
+    }
+
+    //按需定位开关
+    @SuppressLint("UseSwitchCompatOrMaterialCode")
+    private fun switchLocationOnDemand(sbLocationOnDemand: SwitchButton) {
+        sbLocationOnDemand.setOnCheckedChangeListener { _: CompoundButton?, isChecked: Boolean ->
+            SettingUtils.locationOnDemand = isChecked
+            Log.d(TAG, "locationOnDemand = $isChecked")
+            //切换模式后让定位服务按新模式重新初始化（切到按需会立即停掉常驻定位）
+            restartLocationService()
+        }
+        sbLocationOnDemand.isChecked = SettingUtils.locationOnDemand
     }
 
     //重启定位服务
