@@ -52,15 +52,17 @@ object LocationProviderPicker {
      * 第一选择 provider。返回 null 表示不指定，交回系统（fused）。
      */
     fun primary(context: Context): String? {
-        val needFine = SettingUtils.locationAccuracy == Criteria.ACCURACY_FINE
-        val lowPower = SettingUtils.locationPowerRequirement == Criteria.POWER_LOW
+        //精度：只有「模糊」明确表示不需要米级精度；「精确」和「不要求」都按需要 GPS 处理
+        val wantFine = SettingUtils.locationAccuracy != Criteria.ACCURACY_COARSE
+        //电耗：只有「低」明确禁止高功耗 provider（GPS）；中/高/不要求都允许
+        val forbidHighPower = SettingUtils.locationPowerRequirement == Criteria.POWER_LOW
 
-        //精确 + 不省电：优先 GPS，拿不到再退网络
-        if (needFine && !lowPower) {
+        //两个条件都放行才用 GPS：优先 GPS，拿不到再退网络
+        if (wantFine && !forbidHighPower) {
             return gpsOrNull(context) ?: networkOrNull(context)
         }
 
-        //需要省电，或不需要精确：只用网络定位，绝不点亮 GNSS
+        //模糊，或被要求省电：只用网络定位，绝不点亮 GNSS
         return networkOrNull(context)
     }
 
