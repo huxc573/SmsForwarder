@@ -8,6 +8,7 @@ import cn.ppps.forwarder.R
 import cn.ppps.forwarder.utils.AppUtils
 import cn.ppps.forwarder.utils.BatteryUtils
 import cn.ppps.forwarder.utils.HttpServerUtils
+import cn.ppps.forwarder.utils.LocationOnceFetcher
 import cn.ppps.forwarder.utils.Log
 import cn.ppps.forwarder.utils.PhoneUtils
 import cn.ppps.forwarder.utils.SettingUtils
@@ -251,7 +252,8 @@ data class MsgInfo(
     private fun String.replaceLocationTag(encoderName: String = ""): String {
         if (TextUtils.isEmpty(this)) return this
 
-        val location = HttpServerUtils.apiLocationCache
+        //按需定位模式下，若缓存过期则现场做一次单次定位（最多等 20 秒）
+        val location = LocationOnceFetcher.fetchIfNeeded(App.context)
         var locationStr = location.toString()
         var address = location.address
         when (encoderName) {
