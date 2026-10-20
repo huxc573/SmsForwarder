@@ -1245,4 +1245,6 @@
     <string name="start_discovery">搜索裝置</string>
     <string name="invalid_bluetooth_mac_address">藍牙裝置MAC地址無效，例如：AA:BB:CC:DD:EE:FF</string>
     <string name="auto_start_redmi"><![CDATA[紅米手機：授權管理 -> 自啟動管理 -> 允許應用自啟動]]></string>
+    <string name="location_on_demand">按需定位</string>
+    <string name="location_on_demand_tips">平時不調用定位與 GPS，僅在遠端查詢或轉發取位置時定位一次</string>
 </resources>
