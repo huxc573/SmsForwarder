@@ -61,9 +61,9 @@ android {
     }
 
     //编译日期
-    def buildDate = new Date().format("yyMMdd", TimeZone.getTimeZone("GMT+08"))
+    def buildDate = project.findProperty("buildDate") ?: new Date().format("yyMMdd", TimeZone.getTimeZone("GMT+08"))
     //编译时间
-    def buildTime = new Date().format("yyyy-MM-dd HH:mm:ss", TimeZone.getTimeZone("GMT+08"))
+    def buildTime = project.findProperty("buildTime") ?: new Date().format("yyyy-MM-dd HH:mm:ss", TimeZone.getTimeZone("GMT+08"))
     //Git 的 Commit ID
     def gitCommitId = getGitCommitId()
 
@@ -431,3 +431,4 @@ def getGitCommitId() {
         return "unknown"
     }
 }
+
