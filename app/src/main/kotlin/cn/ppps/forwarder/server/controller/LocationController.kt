@@ -5,7 +5,6 @@ import cn.ppps.forwarder.App
 import cn.ppps.forwarder.entity.LocationInfo
 import cn.ppps.forwarder.server.model.BaseRequest
 import cn.ppps.forwarder.server.model.EmptyData
-import cn.ppps.forwarder.utils.HttpServerUtils
 import cn.ppps.forwarder.utils.LocationOnceFetcher
 import cn.ppps.forwarder.utils.Log
 import com.yanzhenjie.andserver.annotation.CrossOrigin
@@ -28,8 +27,9 @@ class LocationController {
     @PostMapping("/query")
     fun query(@RequestBody bean: BaseRequest<EmptyData>): LocationInfo {
         Log.d(TAG, bean.data.toString())
-        //按需模式下，命中缓存过期就现场做一次单次定位（最多等 20 秒）
-        return LocationOnceFetcher.fetchIfNeeded(App.context)
+        //这是「远程找手机 / 刷新」，用户要的就是当下这一刻的位置，
+        //必须强制重新定位（force = true），不能命中原有缓存。
+        return LocationOnceFetcher.fetchIfNeeded(App.context, force = true)
     }
 
 }
