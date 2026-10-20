@@ -25,6 +25,7 @@ const val ACTION_STOP = "STOP"
 const val ACTION_RESTART = "RESTART"
 const val ACTION_STOP_ALARM = "STOP_ALARM"
 const val ACTION_UPDATE_NOTIFICATION = "UPDATE_NOTIFICATION"
+const val ACTION_LOCATION_ONESHOT = "LOCATION_ONESHOT"
 const val EXTRA_UPDATE_NOTIFICATION = "EXTRA_UPDATE_NOTIFICATION"
 
 //初始化相关
@@ -94,6 +95,7 @@ const val SP_LOCATION_ACCURACY = "location_accuracy"
 const val SP_LOCATION_POWER_REQUIREMENT = "location_power_requirement"
 const val SP_LOCATION_MIN_INTERVAL = "location_min_interval_time"
 const val SP_LOCATION_MIN_DISTANCE = "location_min_distance"
+const val SP_LOCATION_ON_DEMAND = "location_on_demand"
 
 const val SP_BLUETOOTH = "enable_bluetooth"
 const val SP_BLUETOOTH_SCAN_INTERVAL = "bluetooth_scan_interval"
