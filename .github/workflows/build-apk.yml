@@ -38,6 +38,7 @@ jobs:
           set -e
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace \
+            -PbuildDate=260224 -PbuildTime="2026-02-24 10:00:00" \
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
             --max-workers=2
 
@@ -65,3 +66,4 @@ jobs:
             **/build/reports/**
             **/*.log
           if-no-files-found: ignore
+
