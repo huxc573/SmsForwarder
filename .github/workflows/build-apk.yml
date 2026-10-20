@@ -1,0 +1,67 @@
+name: Build GPSFix APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - gpsfix
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '11'
+
+      - name: Prepare local signing key
+        run: |
+          set -e
+          mkdir -p keystore
+          keytool -genkeypair -v \
+            -keystore keystore/smsf.jks \
+            -storetype JKS \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias smsf \
+            -storepass smsf123456 -keypass smsf123456 \
+            -dname "CN=SmsForwarder GPSFix, OU=OmniBot, O=OmniBot, L=Beijing, ST=Beijing, C=CN"
+          printf 'keyAlias=smsf\nkeyPassword=smsf123456\nstoreFile=%s/keystore/smsf.jks\nstorePassword=smsf123456\n' "$GITHUB_WORKSPACE" > keystore/keystore.properties
+          cat keystore/keystore.properties
+
+      - name: Build release APK
+        run: |
+          set -e
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            --max-workers=2
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          find . -path ./out -prune -o -name '*.apk' -print | while read -r f; do
+            cp "$f" out/ 2>/dev/null || true
+          done
+          ls -lh out || true
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmsForwarder-gpsfix
+          path: out/*.apk
+          if-no-files-found: error
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            **/build/reports/**
+            **/*.log
+          if-no-files-found: ignore
