@@ -27,6 +27,7 @@ jobs:
             echo "使用仓库内固定签名密钥（签名保持一致，可直接覆盖安装）"
           else
             echo "::warning::仓库内没有固定 keystore，本次临时生成；该包与其他构建签名不一致"
+            GENERATED=1
             keytool -genkeypair -v \
               -keystore keystore/smsf.jks \
               -storetype JKS \
@@ -55,6 +56,14 @@ jobs:
             cp "$f" out/ 2>/dev/null || true
           done
           ls -lh out || true
+
+      - name: Upload generated keystore
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smsf-keystore
+          path: keystore/smsf.jks
+          if-no-files-found: ignore
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
