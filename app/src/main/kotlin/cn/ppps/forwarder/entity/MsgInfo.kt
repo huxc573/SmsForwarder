@@ -253,7 +253,7 @@ data class MsgInfo(
         if (TextUtils.isEmpty(this)) return this
 
         //按需定位模式下，若缓存过期则现场做一次单次定位（最多等 20 秒）
-        val location = LocationOnceFetcher.fetchIfNeeded(App.context)
+        val location = LocationOnceFetcher.fetchIfNeeded(App.context, interactive = false)
         var locationStr = location.toString()
         var address = location.address
         when (encoderName) {
