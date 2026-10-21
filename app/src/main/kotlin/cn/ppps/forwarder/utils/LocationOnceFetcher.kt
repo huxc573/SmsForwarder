@@ -194,7 +194,11 @@ object LocationOnceFetcher {
                 deliver(session)
             }
 
-            val gpsListener = object : LocationListener {
+            //先声明再赋值：onLocationChanged 内要引用这两个 listener 自身
+            lateinit var gpsListener: LocationListener
+            lateinit var networkListener: LocationListener
+
+            gpsListener = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
                     if (session.stopped) return
                     Log.i(LOG_TAG, "GPS 命中，耗时 ${SystemClock.elapsedRealtime() - startedAt}ms")
@@ -211,7 +215,7 @@ object LocationOnceFetcher {
                 override fun onProviderDisabled(provider: String) = Unit
             }
 
-            val networkListener = object : LocationListener {
+            networkListener = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
                     if (session.stopped) return
                     //已有 GPS 结果时不再被网络结果覆盖
