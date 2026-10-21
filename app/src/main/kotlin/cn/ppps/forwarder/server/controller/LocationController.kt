@@ -27,9 +27,11 @@ class LocationController {
     @PostMapping("/query")
     fun query(@RequestBody bean: BaseRequest<EmptyData>): LocationInfo {
         Log.d(TAG, bean.data.toString())
-        //这是「远程找手机 / 刷新」，用户要的就是当下这一刻的位置，
-        //必须强制重新定位（force = true），不能命中原有缓存。
-        return LocationOnceFetcher.fetchIfNeeded(App.context, force = true)
+        //这是「远程找手机 / 刷新」，用户要的就是当下这一刻的位置：
+        //interactive = true 表示用完整超时等待 GPS。
+        //缓存是否可用由 LocationOnceFetcher 校验（有坐标 + 未过期 + 精度达标），
+        //刚定位过一秒的连点刷新会直接复用，避免反复唤醒 GNSS。
+        return LocationOnceFetcher.fetchIfNeeded(App.context, interactive = true)
     }
 
 }
