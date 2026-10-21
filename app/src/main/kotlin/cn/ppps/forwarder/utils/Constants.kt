@@ -25,7 +25,6 @@ const val ACTION_STOP = "STOP"
 const val ACTION_RESTART = "RESTART"
 const val ACTION_STOP_ALARM = "STOP_ALARM"
 const val ACTION_UPDATE_NOTIFICATION = "UPDATE_NOTIFICATION"
-const val ACTION_LOCATION_ONESHOT = "LOCATION_ONESHOT"
 const val EXTRA_UPDATE_NOTIFICATION = "EXTRA_UPDATE_NOTIFICATION"
 
 //初始化相关
@@ -231,6 +230,9 @@ const val SP_ENABLE_API_BATTERY_QUERY = "enable_api_battery_query"
 const val SP_ENABLE_API_WOL = "enable_api_wol"
 const val SP_ENABLE_API_LOCATION = "enable_api_location"
 const val SP_API_LOCATION_CACHE = "api_location_cache"
+
+//远程找手机定位缓存的写入时刻（毫秒）
+const val SP_API_LOCATION_CACHE_AT = "api_location_cache_at"
 const val SP_WOL_HISTORY = "wol_history"
 const val SP_SERVER_ADDRESS = "server_address"
 const val SP_SERVER_HISTORY = "server_history"
