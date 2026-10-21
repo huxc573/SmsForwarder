@@ -59,12 +59,6 @@ class LocationService : Service() {
     companion object {
         var isRunning = false
 
-        /** GPS 优先时，等 GPS 出结果的最长时间；超时则回退网络定位 */
-        private const val GPS_FIRST_TIMEOUT_MS = 12_000L
-
-        /** 单次定位总超时兜底，覆盖「GPS + 网络」两段 */
-        private const val ONE_SHOT_TOTAL_TIMEOUT_MS = 25_000L
-
         /**
          * 按需定位：唤醒服务做一次单次定位，拿到结果后自动停止。
          * 常驻模式下不需要调用；按需模式下由 LocationOnceFetcher 调用。
@@ -251,10 +245,11 @@ class LocationService : Service() {
     /**
      * 做一次单次定位。
      *
-     * 精确精度 + 非省电设置时按「GPS 优先，超时回退网络」策略：
-     *   1. 先用 GPS 取点，最多等 [GPS_FIRST_TIMEOUT_MS]
-     *   2. 拿不到再换 NETWORK_PROVIDER 继续等
-     *   3. 总时长超过 [ONE_SHOT_TOTAL_TIMEOUT_MS] 强制收手，避免 GPS 一直挂着耗电
+     * 策略：精度决定用谁，电耗决定等多久。
+     *   1. 模糊精度：直接用 NETWORK_PROVIDER，不点亮 GNSS
+     *   2. 精确 / 不要求：先 GPS，等待时长由电量消耗设置决定
+     *   3. GPS 超时无结果则回退 NETWORK_PROVIDER
+     *   4. 总超时强制收手，避免 GPS 一直挂着耗电
      */
     private fun oneShotFix() {
         try {
@@ -290,23 +285,26 @@ class LocationService : Service() {
             val primary = LocationProviderPicker.primary(App.context)
             attempt(primary)
 
-            //GPS 优先：超时没结果就回退网络定位
+            //GPS 优先：等多久由「电量消耗」设置决定，超时没结果就回退网络定位。
+            //模糊模式下 primary 本身就是 network，不需要这一步。
             if (primary == LocationManager.GPS_PROVIDER) {
+                val gpsWaitMs = LocationProviderPicker.gpsWaitTimeoutMs()
+                Log.i(TAG, "oneShotFix: GPS 最长等待 ${gpsWaitMs}ms")
                 handler.postDelayed({
                     if (token != oneShotToken || hasNewFix()) return@postDelayed
-                    Log.w(TAG, "oneShotFix: GPS 未出结果，回退网络定位")
+                    Log.w(TAG, "oneShotFix: GPS 超时未出结果，回退网络定位")
                     attempt(LocationProviderPicker.fallback(App.context))
-                }, GPS_FIRST_TIMEOUT_MS)
+                }, gpsWaitMs)
             }
 
-            //总超时兜底
+            //总超时兜底，避免 GPS 一直挂着耗电
             handler.postDelayed({
                 if (token != oneShotToken) return@postDelayed
                 if (App.LocationClient.isStarted()) {
                     Log.w(TAG, "oneShotFix: 总超时，停止定位")
                     App.LocationClient.stopLocation()
                 }
-            }, ONE_SHOT_TOTAL_TIMEOUT_MS)
+            }, LocationProviderPicker.totalTimeoutMs())
         } catch (e: Exception) {
             e.printStackTrace()
             Log.e(TAG, "oneShotFix: ${e.message}")
@@ -376,4 +374,5 @@ class LocationService : Service() {
     }
 
 }
+
 
