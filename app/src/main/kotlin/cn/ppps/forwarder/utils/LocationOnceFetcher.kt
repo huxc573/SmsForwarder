@@ -83,6 +83,9 @@ object LocationOnceFetcher {
 
         @Volatile
         var stopped = false
+
+        @Volatile
+        var delivered = false
     }
 
     /**
@@ -179,11 +182,32 @@ object LocationOnceFetcher {
                 minOf(LocationProviderPicker.gpsWaitTimeoutMs(), maxOf(budget - RESPONSE_MARGIN_MS * 2, 0L))
             val startedAt = SystemClock.elapsedRealtime()
 
+            val needsGps = LocationProviderPicker.needsGps()
+
+            /**
+             * 现在能不能拿去用。
+             *  - GPS 结果：随时可用
+             *  - 模糊：网络即可
+             *  - 不要求：网络即可（先用网络的顶上，GPS 到了再升级）
+             *  - 精确：网络要等 GPS 等待期结束才算数，避免过早用低精度结果
+             */
             fun acceptable(location: Location): Boolean {
-                if (coarseOnly) return true
                 if (location.provider == LocationManager.GPS_PROVIDER) return true
-                //网络结果只在 GPS 等待期结束后才算数，避免过早用低精度结果
+                if (coarseOnly) return true
+                if (!needsGps) return true
                 return SystemClock.elapsedRealtime() - startedAt >= gpsWait
+            }
+
+            /**
+             * 拿到可用结果后是否该收手。
+             * 「不要求」模式下网络结果先交付，但继续保持 GPS 监听，
+             * 等 GPS 在预算内到达时把缓存升级成更准的坐标。
+             */
+            fun shouldStop(location: Location): Boolean {
+                if (location.provider == LocationManager.GPS_PROVIDER) return true
+                if (coarseOnly) return true
+                if (needsGps) return true
+                return false
             }
 
             val listener = object : LocationListener {
@@ -194,12 +218,20 @@ object LocationOnceFetcher {
                     if (old != null && old.provider == LocationManager.GPS_PROVIDER &&
                         location.provider != LocationManager.GPS_PROVIDER
                     ) return
+                    if (!acceptable(location)) {
+                        //先记下，但不交付、不写缓存
+                        session.best = location
+                        return
+                    }
                     session.best = location
-                    if (acceptable(location)) {
-                        //直接写缓存：客户端即使已经走了，这个结果也不会丢
-                        HttpServerUtils.apiLocationCache = toInfo(location)
-                        Log.i(LOG_TAG, "命中 provider=${location.provider}")
+                    //直接写缓存：客户端即使已经走了，这个结果也不会丢
+                    HttpServerUtils.apiLocationCache = toInfo(location)
+                    deliver(session)
+                    if (shouldStop(location)) {
+                        Log.i(LOG_TAG, "命中 provider=${location.provider}，结束本轮")
                         stopAll(lm, this, session)
+                    } else {
+                        Log.i(LOG_TAG, "先返回 provider=${location.provider}，继续等 GPS 升级")
                     }
                 }
 
@@ -255,11 +287,18 @@ object LocationOnceFetcher {
         finish(session)
     }
 
+    /** 交付结果给等待方（只通知一次，后续 GPS 升级不再重复通知） */
+    private fun deliver(session: Session) {
+        if (session.delivered) return
+        session.delivered = true
+        session.done.countDown()
+    }
+
     private fun finish(session: Session) {
         synchronized(gate) {
             if (current === session) current = null
         }
-        session.done.countDown()
+        deliver(session)
     }
 
     /**
