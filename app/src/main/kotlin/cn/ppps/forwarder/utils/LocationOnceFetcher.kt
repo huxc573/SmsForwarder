@@ -109,10 +109,10 @@ object LocationOnceFetcher {
 
         //没超过「最小时间间隔」→ 直接用缓存，不发起定位
         if (isUsable(cached)) {
-            Log.i(LOG_TAG, "缓存未过期（间隔=${SettingUtils.locationMinInterval}ms），直接返回 provider=${cached.provider}，不发起定位")
+            Log.i(LOG_TAG, "缓存有效（间隔=${SettingUtils.locationMinInterval}ms），直接返回 provider=${cached.provider}")
             return cached
         }
-        Log.i(LOG_TAG, "缓存不可用，发起定位 cached=${cached.provider}@${cached.time}")
+        Log.i(LOG_TAG, "发起定位 cached=${cached.provider}@${cached.time}（未达目标 provider 或已过期）")
 
         if (!canLocate(context)) {
             Log.w(LOG_TAG, "无法定位：权限或系统定位开关不满足")
@@ -408,7 +408,9 @@ object LocationOnceFetcher {
     private fun isUsable(info: LocationInfo): Boolean {
         if (!hasCoord(info)) return false
         if (info.time.isEmpty()) return false
-        return isFresh(info)
+        if (!isFresh(info)) return false
+        //缓存是网络结果，但目标是 GPS（精确 / 不要求）→ 仍要重新请求 GPS
+        return LocationProviderPicker.cacheMeetsTarget(info.provider)
     }
 
     private fun isFresh(info: LocationInfo): Boolean {
