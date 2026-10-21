@@ -10,6 +10,7 @@ import android.os.HandlerThread
 import android.os.SystemClock
 import cn.ppps.forwarder.App
 import cn.ppps.forwarder.entity.LocationInfo
+import com.xuexiang.xaop.util.PermissionUtils
 import java.util.Date
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
