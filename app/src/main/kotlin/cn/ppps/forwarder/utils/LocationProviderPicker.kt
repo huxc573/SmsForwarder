@@ -10,12 +10,10 @@ import android.location.LocationManager
  * ## 精度决定「要不要 GPS」
  *  - **模糊**：只要大致位置，只用网络，绝不点亮 GNSS。
  *  - **精确 / 不要求**：两者**走完全相同的流程** —— 先请求 GPS，同时并行挂网络，
- *    GPS 拿不到才用网络结果。区别只有一个：
- *    **「不要求」让 GPS 让位给网络的时间更短**（见 [gpsWaitTimeoutMs]），
- *    因为它不挑精度，没必要为 GPS 多耗电。
+ *    GPS 拿不到才用网络结果。二者没有任何流程差异。
  *
  * ## 电耗决定「愿意为 GPS 等多久」
- * 只是时长，不用来排除 provider。原版把精度与电耗取交集，
+ * 只是时长，与位置精度无关，不用来排除 provider。原版把精度与电耗取交集，
  * 「精确 + 低电耗」交集为空 → 无 provider 可用 → 退回常驻 GPS（实测占开机 87.5%）。
  *
  * 设置值对照（SettingsFragment）：
@@ -23,15 +21,6 @@ import android.location.LocationManager
  *  电量消耗：低 = POWER_LOW(1)，中 = POWER_MEDIUM(2)，高 = POWER_HIGH(3)，不要求 = NO_REQUIREMENT(0)
  */
 object LocationProviderPicker {
-
-    /**
-     * 「不要求」精度的 GPS 等待上限。
-     *
-     * 这是「不要求」与「精确」唯一的差别：不要求不挑精度，
-     * 没必要为了 GPS 多等，超过这个时长就直接用网络结果。
-     * 需要调整「不要求」切换网络的速度，改这一个常量即可。
-     */
-    private const val UNREQUIRED_GPS_WAIT_MS = 15_000L
 
     /** GPS 等待结束后，留给网络回包的时间 */
     private const val NETWORK_TAIL_MS = 8_000L
@@ -78,10 +67,6 @@ object LocationProviderPicker {
     fun cacheMeetsTarget(provider: String?): Boolean =
         if (coarseOnly()) true else provider == LocationManager.GPS_PROVIDER
 
-    /** 是否「不要求」精度。它与「精确」流程相同，只是 GPS 等待更短。 */
-    private fun accuracyNotRequired(): Boolean =
-        SettingUtils.locationAccuracy == Criteria.NO_REQUIREMENT
-
     /**
      * 常驻定位（用户开了「持续定位」）时指定的 provider。
      * 返回 null 表示交给系统决定。
@@ -94,19 +79,18 @@ object LocationProviderPicker {
     /**
      * 愿意为 GPS 等待多久（毫秒）。
      *
-     * 先由「电量消耗」给出基础值，再按精度收敛：
-     *  - **精确**：完整基础值（低 5s / 中 12s / 高 20s / 不要求 30s）
-     *  - **不要求**：`min(基础值, 15s)`，即让它更早切到网络结果
-     *  - **模糊**：不请求 GPS，本值不生效
+     * 只看「电量消耗」这一个维度，与位置精度无关：
+     *  低 5s / 中 12s / 高 20s / 不要求 30s
+     *
+     * 精度只决定「要不要请求 GPS」（见 [coarseOnly]），
+     * 电耗只决定「等多久」——两者互不干涉。
+     * 「模糊位置」不请求 GPS，本值不生效。
      */
-    fun gpsWaitTimeoutMs(): Long {
-        val base = when (SettingUtils.locationPowerRequirement) {
-            Criteria.POWER_LOW -> 5_000L
-            Criteria.POWER_MEDIUM -> 12_000L
-            Criteria.POWER_HIGH -> 20_000L
-            else -> 30_000L
-        }
-        return if (accuracyNotRequired()) minOf(base, UNREQUIRED_GPS_WAIT_MS) else base
+    fun gpsWaitTimeoutMs(): Long = when (SettingUtils.locationPowerRequirement) {
+        Criteria.POWER_LOW -> 5_000L
+        Criteria.POWER_MEDIUM -> 12_000L
+        Criteria.POWER_HIGH -> 20_000L
+        else -> 30_000L
     }
 
     /**
