@@ -61,6 +61,16 @@ object LocationOnceFetcher {
     /** 客户端等待下限，太短等于必定拿不到 */
     private const val MIN_CLIENT_WAIT_MS = 1_500L
 
+    /**
+     * 「回放点」判定阈值。
+     *
+     * `requestLocationUpdates(provider, 0, 0f, ...)` 注册后，系统会**立刻**把该 provider
+     * 最后一次已知位置回放给监听器，这个位置可能是几分钟甚至几小时前的。
+     * 若不加判别就当成新结果，会出现「室内明明定不到位，却拿到一个旧坐标并写进缓存」，
+     * 随后整个最小间隔窗口内所有刷新都命中这个陈旧点。
+     */
+    private const val STALE_FIX_MS = 60_000L
+
     /** 定位回调专用后台线程 */
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
@@ -98,7 +108,11 @@ object LocationOnceFetcher {
         if (!SettingUtils.enableLocation || !SettingUtils.locationOnDemand) return cached
 
         //没超过「最小时间间隔」→ 直接用缓存，不发起定位
-        if (isUsable(cached)) return cached
+        if (isUsable(cached)) {
+            Log.i(LOG_TAG, "缓存未过期（间隔=${SettingUtils.locationMinInterval}ms），直接返回 provider=${cached.provider}，不发起定位")
+            return cached
+        }
+        Log.i(LOG_TAG, "缓存不可用，发起定位 cached=${cached.provider}@${cached.time}")
 
         if (!canLocate(context)) {
             Log.w(LOG_TAG, "无法定位：权限或系统定位开关不满足")
@@ -174,6 +188,16 @@ object LocationOnceFetcher {
             val gpsWait = if (coarseOnly) 0L else LocationProviderPicker.gpsWaitTimeoutMs()
             val startedAt = SystemClock.elapsedRealtime()
 
+            /** 这个定位点是不是系统回放的陈旧位置 */
+            fun isStale(location: Location): Boolean = ageOf(location) > STALE_FIX_MS
+
+            /** 定位点距今多久；时间戳不可用时按 0 处理（视为新鲜） */
+            fun ageOf(location: Location): Long {
+                val t = location.time
+                if (t <= 0L) return 0L
+                return (System.currentTimeMillis() - t).coerceAtLeast(0L)
+            }
+
             /** 写缓存 + 交付。缓存时间戳单独记，避免 provider 给旧定位点时缓存立刻失效 */
             fun publish(location: Location) {
                 val info = LocationInfo(
@@ -201,6 +225,10 @@ object LocationOnceFetcher {
             gpsListener = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
                     if (session.stopped) return
+                    if (isStale(location)) {
+                        Log.w(LOG_TAG, "GPS 回放点过旧（${ageOf(location)}ms），丢弃并继续等")
+                        return
+                    }
                     Log.i(LOG_TAG, "GPS 命中，耗时 ${SystemClock.elapsedRealtime() - startedAt}ms")
                     session.best = location
                     publish(location)
@@ -218,6 +246,10 @@ object LocationOnceFetcher {
             networkListener = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
                     if (session.stopped) return
+                    if (isStale(location)) {
+                        Log.w(LOG_TAG, "网络回放点过旧（${ageOf(location)}ms），丢弃并继续等")
+                        return
+                    }
                     //已有 GPS 结果时不再被网络结果覆盖
                     val old = session.best
                     if (old != null && old.provider == LocationManager.GPS_PROVIDER) return
@@ -383,17 +415,19 @@ object LocationOnceFetcher {
         val interval = SettingUtils.locationMinInterval
         //间隔设为 0 表示不限制，即每次都取新的
         if (interval <= 0L) return false
-        val at = HttpServerUtils.apiLocationCacheAt
-        val age = if (at > 0L) {
-            System.currentTimeMillis() - at
-        } else {
-            //兼容旧版本写入的缓存（没有写入时刻），退回按定位时间判断
-            try {
-                System.currentTimeMillis() - (App.DateFormat.parse(info.time)?.time ?: return false)
-            } catch (e: Exception) {
-                return false
-            }
+        //按「这次定位发生的时刻」算年龄，而不是写入缓存的时刻：
+        //位置新不新鲜取决定位时间，与什么时候把它存下来无关。
+        val fixedAt = try {
+            App.DateFormat.parse(info.time)?.time ?: 0L
+        } catch (e: Exception) {
+            0L
         }
-        return age < interval
+        //时间戳缺失或不可解析时，退回用写入时刻
+        val age = if (fixedAt > 0L) {
+            System.currentTimeMillis() - fixedAt
+        } else {
+            System.currentTimeMillis() - HttpServerUtils.apiLocationCacheAt
+        }
+        return age in 0 until interval
     }
 }
