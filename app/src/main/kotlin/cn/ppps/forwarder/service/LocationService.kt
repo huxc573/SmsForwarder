@@ -17,7 +17,6 @@ import androidx.work.workDataOf
 import com.google.gson.Gson
 import cn.ppps.forwarder.App
 import cn.ppps.forwarder.entity.LocationInfo
-import cn.ppps.forwarder.utils.ACTION_LOCATION_ONESHOT
 import cn.ppps.forwarder.utils.ACTION_RESTART
 import cn.ppps.forwarder.utils.ACTION_START
 import cn.ppps.forwarder.utils.ACTION_STOP
@@ -45,9 +44,6 @@ class LocationService : Service() {
     private var receiverRegistered = false
     private val handler = Handler(Looper.getMainLooper())
 
-    /** 单次定位序号：每次请求 +1，用于作废上一轮遗留的定时回退 */
-    private var oneShotToken = 0
-
     private val locationStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == LocationManager.PROVIDERS_CHANGED_ACTION) {
@@ -59,20 +55,6 @@ class LocationService : Service() {
     companion object {
         var isRunning = false
 
-        /**
-         * 按需定位：唤醒服务做一次单次定位，拿到结果后自动停止。
-         * 常驻模式下不需要调用；按需模式下由 LocationOnceFetcher 调用。
-         */
-        fun requestOnce(context: Context) {
-            try {
-                val intent = Intent(context, LocationService::class.java).apply {
-                    action = ACTION_LOCATION_ONESHOT
-                }
-                context.startService(intent)
-            } catch (e: Exception) {
-                android.util.Log.e("LocationService", "requestOnce failed: ${e.message}")
-            }
-        }
     }
 
     override fun onBind(p0: Intent?): IBinder? {
@@ -107,7 +89,6 @@ class LocationService : Service() {
         Log.i(TAG, "onStartCommand: ${intent.action}")
 
         when {
-            intent.action == ACTION_LOCATION_ONESHOT -> oneShotFix()
             intent.action == ACTION_START && !isRunning -> startService()
             intent.action == ACTION_STOP && isRunning -> stopService()
             intent.action == ACTION_RESTART -> {
@@ -147,6 +128,7 @@ class LocationService : Service() {
         try {
             //清空缓存
             HttpServerUtils.apiLocationCache = LocationInfo()
+            HttpServerUtils.apiLocationCacheAt = 0L
             TaskUtils.locationInfoOld = LocationInfo()
 
             if (SettingUtils.enableLocation && PermissionUtils.isGranted(android.Manifest.permission.ACCESS_COARSE_LOCATION, android.Manifest.permission.ACCESS_FINE_LOCATION)) {
@@ -223,6 +205,7 @@ class LocationService : Service() {
     private fun stopService() {
         //清空缓存
         HttpServerUtils.apiLocationCache = LocationInfo()
+        HttpServerUtils.apiLocationCacheAt = 0L
         TaskUtils.locationInfoOld = LocationInfo()
 
         isRunning = try {
@@ -242,82 +225,13 @@ class LocationService : Service() {
         }
     }
 
-    /**
-     * 做一次单次定位。
-     *
-     * 策略：精度决定用谁，电耗决定等多久。
-     *   1. 模糊精度：直接用 NETWORK_PROVIDER，不点亮 GNSS
-     *   2. 精确 / 不要求：先 GPS，等待时长由电量消耗设置决定
-     *   3. GPS 超时无结果则回退 NETWORK_PROVIDER
-     *   4. 总超时强制收手，避免 GPS 一直挂着耗电
-     */
-    private fun oneShotFix() {
-        try {
-            if (!PermissionUtils.isGranted(android.Manifest.permission.ACCESS_COARSE_LOCATION, android.Manifest.permission.ACCESS_FINE_LOCATION)) {
-                Log.w(TAG, "oneShotFix: 无定位权限")
-                return
-            }
-            if (!LocationUtils.isLocationEnabled(App.context) || !LocationUtils.hasLocationCapability(App.context)) {
-                Log.w(TAG, "oneShotFix: 系统定位未开启")
-                return
-            }
-
-            oneShotToken++
-            val token = oneShotToken
-            val baselineTime = HttpServerUtils.apiLocationCache.time
-
-            fun hasNewFix(): Boolean = HttpServerUtils.apiLocationCache.time != baselineTime
-
-            fun attempt(provider: String?) {
-                if (token != oneShotToken) return
-                try {
-                    if (App.LocationClient.isStarted()) {
-                        App.LocationClient.stopLocation()
-                    }
-                    App.LocationClient.setLocationOption(buildLocationOption(true, provider))
-                    App.LocationClient.startLocation()
-                    Log.i(TAG, "oneShotFix: 发起定位 provider=${provider ?: "系统默认"}")
-                } catch (e: Exception) {
-                    Log.e(TAG, "oneShotFix: provider=$provider 失败 ${e.message}")
-                }
-            }
-
-            val primary = LocationProviderPicker.primary(App.context)
-            attempt(primary)
-
-            //GPS 优先：等多久由「电量消耗」设置决定，超时没结果就回退网络定位。
-            //模糊模式下 primary 本身就是 network，不需要这一步。
-            if (primary == LocationManager.GPS_PROVIDER) {
-                val gpsWaitMs = LocationProviderPicker.gpsWaitTimeoutMs()
-                Log.i(TAG, "oneShotFix: GPS 最长等待 ${gpsWaitMs}ms")
-                handler.postDelayed({
-                    if (token != oneShotToken || hasNewFix()) return@postDelayed
-                    Log.w(TAG, "oneShotFix: GPS 超时未出结果，回退网络定位")
-                    attempt(LocationProviderPicker.fallback(App.context))
-                }, gpsWaitMs)
-            }
-
-            //总超时兜底，避免 GPS 一直挂着耗电
-            handler.postDelayed({
-                if (token != oneShotToken) return@postDelayed
-                if (App.LocationClient.isStarted()) {
-                    Log.w(TAG, "oneShotFix: 总超时，停止定位")
-                    App.LocationClient.stopLocation()
-                }
-            }, LocationProviderPicker.totalTimeoutMs())
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Log.e(TAG, "oneShotFix: ${e.message}")
-        }
-    }
-
     private fun restartLocation() {
         //如果已经开始定位，则先停止定位
         if (App.LocationClient.isStarted()) {
             App.LocationClient.stopLocation()
         }
         if (LocationUtils.isLocationEnabled(App.context) && LocationUtils.hasLocationCapability(App.context)) {
-            App.LocationClient.setLocationOption(buildLocationOption(false))
+            App.LocationClient.setLocationOption(buildLocationOption())
             App.LocationClient.startLocation()
         } else {
             Log.w(TAG, "onException: GPS未开启")
@@ -325,23 +239,20 @@ class LocationService : Service() {
     }
 
     /**
-     * 组装定位参数。
-     * [once] = true 表示单次定位（按需模式），拿到结果自动停。
-     * [providerOverride] 显式指定 provider；null 表示不指定，交回系统。
+     * 组装常驻定位参数。
+     *
+     * 显式指定 provider，绕开 `getBestProvider` 在 Android 12+ 恒返回 `fused` 的问题：
+     * fused 会自行决定要不要拉起 GNSS，导致「模糊位置」形同虚设。
      */
-    private fun buildLocationOption(
-        once: Boolean,
-        providerOverride: String? = LocationProviderPicker.primary(App.context)
-    ) = App.LocationClient.getLocationOption()
+    private fun buildLocationOption() = App.LocationClient.getLocationOption()
         .setAccuracy(SettingUtils.locationAccuracy)//设置位置精度
         .setPowerRequirement(SettingUtils.locationPowerRequirement) //设置电量消耗
-        .setMinTime(if (once) 0L else SettingUtils.locationMinInterval)//设置位置更新最小时间间隔
-        .setMinDistance(if (once) 0 else SettingUtils.locationMinDistance)//设置位置更新最小距离
-        .setOnceLocation(once)//单次定位后自动停止
+        .setMinTime(SettingUtils.locationMinInterval)//设置位置更新最小时间间隔
+        .setMinDistance(SettingUtils.locationMinDistance)//设置位置更新最小距离
+        .setOnceLocation(false)//常驻：不平滑停止
         .setLastKnownLocation(false)//设置是否获取最后一次缓存的已知位置
         .apply {
-            //关键：按精度/电耗显式指定 provider，绕开 getBestProvider 恒返回 fused 的问题
-            providerOverride?.let { setProvider(it) }
+            LocationProviderPicker.primary(App.context)?.let { setProvider(it) }
         }
 
     private fun enqueueLocationWorkerRequest(
