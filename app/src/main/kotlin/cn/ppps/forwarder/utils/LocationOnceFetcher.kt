@@ -188,15 +188,15 @@ object LocationOnceFetcher {
             val gpsWait = if (coarseOnly) 0L else LocationProviderPicker.gpsWaitTimeoutMs()
             val startedAt = SystemClock.elapsedRealtime()
 
-            /** 这个定位点是不是系统回放的陈旧位置 */
-            fun isStale(location: Location): Boolean = ageOf(location) > STALE_FIX_MS
-
             /** 定位点距今多久；时间戳不可用时按 0 处理（视为新鲜） */
             fun ageOf(location: Location): Long {
                 val t = location.time
                 if (t <= 0L) return 0L
                 return (System.currentTimeMillis() - t).coerceAtLeast(0L)
             }
+
+            /** 这个定位点是不是系统回放的陈旧位置 */
+            fun isStale(location: Location): Boolean = ageOf(location) > STALE_FIX_MS
 
             /** 写缓存 + 交付。缓存时间戳单独记，避免 provider 给旧定位点时缓存立刻失效 */
             fun publish(location: Location) {
