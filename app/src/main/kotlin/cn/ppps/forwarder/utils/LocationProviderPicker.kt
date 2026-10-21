@@ -69,6 +69,15 @@ object LocationProviderPicker {
     /** 是否「只要大致位置」。只有显式选「模糊位置」才算。 */
     fun coarseOnly(): Boolean = SettingUtils.locationAccuracy == Criteria.ACCURACY_COARSE
 
+    /**
+     * 缓存是否达到「目标 provider」。
+     *
+     * 精确 / 不要求都要 GPS 结果，只有「模糊」接受网络结果。
+     * 缓存是网络结果时不算达标 —— 刷新时仍要重新请求 GPS。
+     */
+    fun cacheMeetsTarget(provider: String?): Boolean =
+        if (coarseOnly()) true else provider == LocationManager.GPS_PROVIDER
+
     /** 是否「不要求」精度。它与「精确」流程相同，只是 GPS 等待更短。 */
     private fun accuracyNotRequired(): Boolean =
         SettingUtils.locationAccuracy == Criteria.NO_REQUIREMENT
