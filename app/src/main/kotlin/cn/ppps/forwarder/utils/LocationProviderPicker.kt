@@ -45,6 +45,15 @@ object LocationProviderPicker {
         if (isEnabled(context, LocationManager.GPS_PROVIDER)) LocationManager.GPS_PROVIDER else null
 
     /**
+     * provider 是否真的可用：系统里有它，并且没被用户关掉。
+     *
+     * 只查 [LocationManager.getProviders] 是不够的——GPS 开关关闭时 provider 仍然存在，
+     * 对它注册监听不会报错但永远收不到回调，只会白挂着占用电量。
+     */
+    fun isReady(context: Context, provider: String): Boolean =
+        hasProvider(context, provider) && isEnabled(context, provider)
+
+    /**
      * 是否「只要大致位置」。只有显式选「模糊位置」才算；
      * 「精确」和「不要求」都按需要精确位置处理。
      */
@@ -60,12 +69,6 @@ object LocationProviderPicker {
         //精确 / 不要求：优先 GPS，拿不到再退网络
         return gpsOrNull(context) ?: networkOrNull(context)
     }
-
-    /**
-     * GPS 拿不到结果时的回退 provider。
-     */
-    fun fallback(context: Context): String? =
-        networkOrNull(context) ?: gpsOrNull(context)
 
     /**
      * 愿意为 GPS 等待多久（毫秒），由「电量消耗」设置决定。
@@ -90,18 +93,4 @@ object LocationProviderPicker {
      * 「不要求」代表不挑精度，网络结果同样可用。
      */
     fun needsGps(): Boolean = SettingUtils.locationAccuracy == Criteria.ACCURACY_FINE
-
-    /**
-     * 缓存的精度是否满足当前设置。
-     *  - 精确：必须是 GPS 结果，网络结果视为「精度不符」，需要重取
-     *  - 模糊 / 不要求：网络结果即可，缓存可复用
-     *
-     * 注意「不要求」不能等同于「精确」：它表示不挑精度，
-     * 若把网络结果判为不达标，会导致每次刷新都重新唤醒 GNSS，
-     * 缓存永远无法命中，反而更费电。
-     */
-    fun meetsAccuracy(provider: String?): Boolean {
-        if (needsGps()) return provider == LocationManager.GPS_PROVIDER
-        return true
-    }
 }
