@@ -86,12 +86,22 @@ object LocationProviderPicker {
     fun totalTimeoutMs(): Long = gpsWaitTimeoutMs() + 8_000L
 
     /**
+     * 是否「必须精确位置」。只有显式选「精确」才要求 GPS。
+     * 「不要求」代表不挑精度，网络结果同样可用。
+     */
+    fun needsGps(): Boolean = SettingUtils.locationAccuracy == Criteria.ACCURACY_FINE
+
+    /**
      * 缓存的精度是否满足当前设置。
-     *  - 模糊：网络结果也算达标（GPS 结果当然更达标）
-     *  - 精确 / 不要求：必须是 GPS 结果，网络结果视为「精度不符」
+     *  - 精确：必须是 GPS 结果，网络结果视为「精度不符」，需要重取
+     *  - 模糊 / 不要求：网络结果即可，缓存可复用
+     *
+     * 注意「不要求」不能等同于「精确」：它表示不挑精度，
+     * 若把网络结果判为不达标，会导致每次刷新都重新唤醒 GNSS，
+     * 缓存永远无法命中，反而更费电。
      */
     fun meetsAccuracy(provider: String?): Boolean {
-        if (coarseOnly()) return true
-        return provider == LocationManager.GPS_PROVIDER
+        if (needsGps()) return provider == LocationManager.GPS_PROVIDER
+        return true
     }
 }
