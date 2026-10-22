@@ -233,6 +233,14 @@ const val SP_API_LOCATION_CACHE = "api_location_cache"
 
 //远程找手机定位缓存的写入时刻（毫秒）
 const val SP_API_LOCATION_CACHE_AT = "api_location_cache_at"
+
+//GPS 结果缓存槽（只被 GPS 结果覆盖）
+const val SP_API_LOCATION_CACHE_GPS = "api_location_cache_gps"
+const val SP_API_LOCATION_CACHE_GPS_AT = "api_location_cache_gps_at"
+
+//网络结果缓存槽（只被网络结果覆盖）
+const val SP_API_LOCATION_CACHE_NET = "api_location_cache_net"
+const val SP_API_LOCATION_CACHE_NET_AT = "api_location_cache_net_at"
 const val SP_WOL_HISTORY = "wol_history"
 const val SP_SERVER_ADDRESS = "server_address"
 const val SP_SERVER_HISTORY = "server_history"
