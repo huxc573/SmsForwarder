@@ -101,9 +101,16 @@ class HttpServerUtils private constructor() {
         //远程找手机定位缓存
         var apiLocationCache: LocationInfo by SharedPreference(SP_API_LOCATION_CACHE, LocationInfo())
 
-        //上述缓存的写入时刻（毫秒）。用写入时刻而不是定位时间来判新鲜度：
-        //网络 provider 首次回调常给一个很旧的缓存点，按定位时间算会立刻"过期"。
+        //上述缓存的写入时刻（毫秒），仅作兼容保留
         var apiLocationCacheAt: Long by SharedPreference(SP_API_LOCATION_CACHE_AT, 0L)
+
+        //GPS 结果槽：只被 GPS 结果写入/覆盖，不会被网络结果冲掉
+        var apiLocationGps: LocationInfo by SharedPreference(SP_API_LOCATION_CACHE_GPS, LocationInfo())
+        var apiLocationGpsAt: Long by SharedPreference(SP_API_LOCATION_CACHE_GPS_AT, 0L)
+
+        //网络结果槽：只被网络结果写入/覆盖
+        var apiLocationNet: LocationInfo by SharedPreference(SP_API_LOCATION_CACHE_NET, LocationInfo())
+        var apiLocationNetAt: Long by SharedPreference(SP_API_LOCATION_CACHE_NET_AT, 0L)
 
         //WOL历史记录
         var wolHistory: String by SharedPreference(SP_WOL_HISTORY, "")
