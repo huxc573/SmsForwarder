@@ -8,7 +8,6 @@ import cn.ppps.forwarder.R
 import cn.ppps.forwarder.utils.AppUtils
 import cn.ppps.forwarder.utils.BatteryUtils
 import cn.ppps.forwarder.utils.HttpServerUtils
-import cn.ppps.forwarder.utils.LocationOnceFetcher
 import cn.ppps.forwarder.utils.Log
 import cn.ppps.forwarder.utils.PhoneUtils
 import cn.ppps.forwarder.utils.SettingUtils
@@ -252,8 +251,11 @@ data class MsgInfo(
     private fun String.replaceLocationTag(encoderName: String = ""): String {
         if (TextUtils.isEmpty(this)) return this
 
-        //按需定位模式下，若缓存过期则现场做一次单次定位（最多等 20 秒）
-        val location = LocationOnceFetcher.fetchIfNeeded(App.context, interactive = false)
+        //只读缓存，绝不在这里发起定位。
+        //转发（短信/通知/通话）是高频事件，若在此触发定位，一条通知就会点亮 GNSS，
+        //通知一多 GPS 就接近常亮——这正是本补丁要解决的问题。
+        //需要新坐标请用「远程找手机」，那里是用户主动查询。
+        val location = HttpServerUtils.apiLocationCache
         var locationStr = location.toString()
         var address = location.address
         when (encoderName) {
