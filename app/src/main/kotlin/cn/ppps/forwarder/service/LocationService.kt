@@ -129,6 +129,10 @@ class LocationService : Service() {
             //清空缓存
             HttpServerUtils.apiLocationCache = LocationInfo()
             HttpServerUtils.apiLocationCacheAt = 0L
+            HttpServerUtils.apiLocationGps = LocationInfo()
+            HttpServerUtils.apiLocationGpsAt = 0L
+            HttpServerUtils.apiLocationNet = LocationInfo()
+            HttpServerUtils.apiLocationNetAt = 0L
             TaskUtils.locationInfoOld = LocationInfo()
 
             if (SettingUtils.enableLocation && PermissionUtils.isGranted(android.Manifest.permission.ACCESS_COARSE_LOCATION, android.Manifest.permission.ACCESS_FINE_LOCATION)) {
@@ -151,6 +155,14 @@ class LocationService : Service() {
 
                         Log.d(TAG, "locationInfoNew = $locationInfoNew")
                         HttpServerUtils.apiLocationCache = locationInfoNew
+                        HttpServerUtils.apiLocationCacheAt = System.currentTimeMillis()
+                        if (locationInfoNew.provider == "gps") {
+                            HttpServerUtils.apiLocationGps = locationInfoNew
+                            HttpServerUtils.apiLocationGpsAt = System.currentTimeMillis()
+                        } else {
+                            HttpServerUtils.apiLocationNet = locationInfoNew
+                            HttpServerUtils.apiLocationNetAt = System.currentTimeMillis()
+                        }
                         TaskUtils.locationInfoNew = locationInfoNew
 
                         //触发自动任务
@@ -206,6 +218,10 @@ class LocationService : Service() {
         //清空缓存
         HttpServerUtils.apiLocationCache = LocationInfo()
         HttpServerUtils.apiLocationCacheAt = 0L
+        HttpServerUtils.apiLocationGps = LocationInfo()
+        HttpServerUtils.apiLocationGpsAt = 0L
+        HttpServerUtils.apiLocationNet = LocationInfo()
+        HttpServerUtils.apiLocationNetAt = 0L
         TaskUtils.locationInfoOld = LocationInfo()
 
         isRunning = try {
