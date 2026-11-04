@@ -81,7 +81,7 @@ class LocationService : Service() {
         super.onStartCommand(intent, flags, startId)
         if (intent == null) {
             //系统重启服务（START_STICKY 场景），保持原有的自动恢复语义
-            if (SettingUtils.enableLocation && !SettingUtils.locationOnDemand && !isRunning) {
+            if (SettingUtils.enableLocation && !SettingUtils.locationOnDemandEffective && !isRunning) {
                 startService()
             }
             return START_STICKY
@@ -92,7 +92,7 @@ class LocationService : Service() {
             intent.action == ACTION_START && !isRunning -> startService()
             intent.action == ACTION_STOP && isRunning -> stopService()
             intent.action == ACTION_RESTART -> {
-                if (SettingUtils.locationOnDemand) {
+                if (SettingUtils.locationOnDemandEffective) {
                     //切到按需模式：立刻停掉常驻定位，确保 GPS 不再被点亮
                     if (App.LocationClient.isStarted()) {
                         Log.i(TAG, "切换到按需模式，停止常驻定位")
@@ -185,7 +185,7 @@ class LocationService : Service() {
                 App.LocationClient.setOnExceptionListener(object : OnExceptionListener {
                     override fun onException(@LocationErrorCode errorCode: Int, e: Exception) {
                         Log.w(TAG, "onException(errorCode = ${errorCode}, e = ${e})")
-                        if (SettingUtils.locationOnDemand) {
+                        if (SettingUtils.locationOnDemandEffective) {
                             //按需模式下不重启常驻定位，避免把 GPS 又点亮
                             App.LocationClient.stopLocation()
                         } else {
@@ -194,7 +194,7 @@ class LocationService : Service() {
                     }
                 })
 
-                if (!SettingUtils.locationOnDemand) {
+                if (!SettingUtils.locationOnDemandEffective) {
                     //常驻模式：立即开始持续定位
                     restartLocation()
                 } else {
@@ -288,7 +288,7 @@ class LocationService : Service() {
         if (LocationUtils.isLocationEnabled(App.context) && LocationUtils.hasLocationCapability(App.context)) {
             //已启用
             Log.d(TAG, "handleLocationStatusChanged: 已启用")
-            if (SettingUtils.enableLocation && !SettingUtils.locationOnDemand && !App.LocationClient.isStarted()) {
+            if (SettingUtils.enableLocation && !SettingUtils.locationOnDemandEffective && !App.LocationClient.isStarted()) {
                 App.LocationClient.startLocation()
             }
         } else {

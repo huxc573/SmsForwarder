@@ -2,6 +2,7 @@ package cn.ppps.forwarder.utils
 
 import android.location.Criteria
 import cn.ppps.forwarder.R
+import cn.ppps.forwarder.core.Core
 import com.xuexiang.xutil.resource.ResUtils.getString
 
 class SettingUtils private constructor() {
@@ -157,6 +158,32 @@ class SettingUtils private constructor() {
 
         //是否启用按需定位：平时不注册任何定位，只有远程查询/转发取位置时才单次定位一次（默认关闭，保持原有行为）
         var locationOnDemand: Boolean by SharedPreference(SP_LOCATION_ON_DEMAND, false)
+
+        /**
+         * 是否存在依赖「持续定位」的自动任务。
+         *
+         * 「到达/离开某地址」需要连续的坐标变化才能判断越过边界，
+         * 而按需定位平时不产生任何定位回调，两者无法同时工作。
+         * 因此有这类任务时按需定位不生效，退回常驻定位，保证原有功能不被破坏。
+         */
+        fun hasGeoTask(): Boolean {
+            return try {
+                Core.task.getByType(TASK_CONDITION_TO_ADDRESS).isNotEmpty() ||
+                        Core.task.getByType(TASK_CONDITION_LEAVE_ADDRESS).isNotEmpty()
+            } catch (e: Exception) {
+                //任务库尚未初始化时按「有任务」处理，宁可多耗电也不让功能失效
+                true
+            }
+        }
+
+        /**
+         * 按需定位是否真正生效。
+         *
+         * 用户开了开关，但存在地理任务时会被强制降级为常驻。
+         * 所有判断「要不要注册定位」的地方都应使用这个属性，而不是直接用 locationOnDemand。
+         */
+        val locationOnDemandEffective: Boolean
+            get() = locationOnDemand && !hasGeoTask()
 
         //是否跟随系统语言
         //var isFlowSystemLanguage: Boolean by SharedPreference(SP_IS_FLOW_SYSTEM_LANGUAGE, false)

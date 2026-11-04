@@ -30,6 +30,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import cn.ppps.forwarder.App
 import cn.ppps.forwarder.R
+import com.xuexiang.xui.utils.XToastUtils
 import cn.ppps.forwarder.activity.MainActivity
 import cn.ppps.forwarder.adapter.spinner.AppListAdapterItem
 import cn.ppps.forwarder.adapter.spinner.AppListSpinnerAdapter
@@ -709,6 +710,10 @@ class SettingsFragment : BaseFragment<FragmentSettingsBinding?>(), View.OnClickL
         sbLocationOnDemand.setOnCheckedChangeListener { _: CompoundButton?, isChecked: Boolean ->
             SettingUtils.locationOnDemand = isChecked
             Log.d(TAG, "locationOnDemand = $isChecked")
+            //存在依赖持续定位的自动任务时，按需定位不会生效（退回常驻），提示用户原因
+            if (isChecked && SettingUtils.hasGeoTask()) {
+                XToastUtils.info(R.string.location_on_demand_geo_task_tips, 3000)
+            }
             //切换模式后让定位服务按新模式重新初始化（切到按需会立即停掉常驻定位）
             restartLocationService()
         }
